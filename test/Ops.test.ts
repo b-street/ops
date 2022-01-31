@@ -476,6 +476,39 @@ describe("Ops test", function () {
     );
   });
 
+  it("can only be executed by task creator's task", async () => {
+    const txFee = ethers.utils.parseEther("1");
+    const depositAmount = ethers.utils.parseEther("2");
+    await taskTreasury
+      .connect(user2)
+      .depositFunds(user2Address, ETH, depositAmount, { value: depositAmount });
+
+    await ops
+      .connect(user2)
+      .createTask(
+        counter.address,
+        selector,
+        counterResolver.address,
+        resolverData
+      );
+
+    const [, execData] = await counterResolver.checker();
+
+    await expect(
+      simulateExec(
+        txFee,
+        ETH,
+        user2Address,
+        true,
+        resolverHash,
+        counter.address,
+        execData
+      )
+    ).to.be.revertedWith(
+      "ExecFacet.exec:Ops.exec:Execution not from creator's task"
+    );
+  });
+
   it("getTaskIdsByUser test", async () => {
     // fake task
     await ops
@@ -519,12 +552,6 @@ describe("Ops test", function () {
     _execData: string
   ) => {
     const ZERO = ethers.constants.AddressZero;
-    await hre.network.provider.request({
-      method: "hardhat_impersonateAccount",
-      params: [ZERO],
-    });
-
-    const mockProvider = await ethers.getSigner(ZERO);
 
     await diamond.connect(owner).addExecutors([ZERO]);
 
@@ -544,6 +571,10 @@ describe("Ops test", function () {
       _feeToken,
     ]);
 
-    await mockProvider.call({ to: diamondAddress, data: execData });
+    await ethers.provider.call({
+      to: diamondAddress,
+      data: execData,
+      from: ZERO,
+    });
   };
 });
